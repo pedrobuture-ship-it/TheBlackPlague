@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+	<head>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+		<meta name="theme-color" content="#0d0916">
+		<meta name="mobile-web-app-capable" content="yes">
+		<meta name="apple-mobile-web-app-capable" content="yes">
+		<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+		<meta name="apple-mobile-web-app-title" content="The Black Plague: Rafaelle's Oath">
+		<title>The Black Plague: Rafaelle's Oath</title>
+		<style>
+html, body, #canvas { margin: 0; padding: 0; border: 0; }
+html, body { height: 100%; background: #0d0916; }
+body {
+	color: #e8e0d0;
+	overflow: hidden;
+	/* jogo de toque: sem zoom, sem rolagem elástica, sem menu de toque longo, sem seleção de texto */
+	touch-action: none;
+	overscroll-behavior: none;
+	-webkit-touch-callout: none;
+	-webkit-user-select: none;
+	user-select: none;
+	-webkit-tap-highlight-color: transparent;
+	font-family: Georgia, 'Times New Roman', serif;
+}
+#canvas { display: block; }
+#canvas:focus { outline: none; }
+
+/* margens do entalhe e da barra de gestos: o jogo as lê para afastar a interface (Device.safe_insets) */
+#safe-probe {
+	position: fixed; left: 0; top: 0; width: 0; height: 0; visibility: hidden; pointer-events: none;
+	padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px);
+}
+
+/* tela de carregamento */
+#status {
+	position: fixed; inset: 0; z-index: 5;
+	display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 14px;
+	background: radial-gradient(ellipse at center, #2a1a3f 0%, #0d0916 70%);
+	visibility: hidden;
+}
+#status h1 small { display: block; margin-top: 6px; font-size: 0.5em; letter-spacing: 0.08em; color: #d8c49a; }
+#status h1 { margin: 0; text-align: center; font-size: clamp(22px, 6vw, 44px); letter-spacing: 0.12em; color: #f0d584; text-shadow: 0 2px 0 #000, 0 0 18px #6a3a8a; }
+#status-bar { width: min(60vw, 420px); height: 14px; border: 2px solid #c9a24a; border-radius: 3px; background: #1c1626; overflow: hidden; }
+#status-fill { height: 100%; width: 0; background: linear-gradient(#e8c668, #b08a30); }
+#status-text { font-size: clamp(12px, 2.6vw, 16px); color: #9a90a8; text-align: center; padding: 0 24px; line-height: 1.4; }
+#status-notice {
+	display: none; background-color: #5b3943; border-radius: 0.5rem; border: 1px solid #9b3943; color: #e0e0e0;
+	font-family: 'Noto Sans', 'Droid Sans', Arial, sans-serif; line-height: 1.3; margin: 0 2rem; padding: 1rem; text-align: center;
+}
+
+/* o jogo é de paisagem: em pé, cobre a tela e pede para girar (o jogo também pausa sozinho) */
+#rotate {
+	display: none; position: fixed; inset: 0; z-index: 9; flex-direction: column; justify-content: center; align-items: center; gap: 22px;
+	background: #0d0916; color: #f0d584; text-align: center; font-size: 20px; padding: 0 30px;
+}
+#rotate .phone {
+	width: 44px; height: 76px; border: 4px solid #c9a24a; border-radius: 9px; position: relative;
+	animation: gire 2.4s ease-in-out infinite;
+}
+#rotate .phone::after { content: ''; position: absolute; left: 50%; bottom: 5px; width: 12px; height: 3px; margin-left: -6px; background: #c9a24a; border-radius: 2px; }
+@keyframes gire { 0%, 20% { transform: rotate(0deg); } 60%, 100% { transform: rotate(-90deg); } }
+@media (orientation: portrait) and (pointer: coarse) { #rotate { display: flex; } }
+		</style>
+		<link id="-gd-engine-icon" rel="icon" type="image/png" href="index.icon.png" />
+<link rel="apple-touch-icon" href="index.apple-touch-icon.png"/>
+<link rel="manifest" href="index.manifest.json">
+
+	</head>
+	<body>
+		<canvas id="canvas">Seu navegador não suporta o elemento canvas.</canvas>
+		<div id="safe-probe"></div>
+		<noscript>Seu navegador precisa do JavaScript ligado para rodar o jogo.</noscript>
+
+		<div id="rotate"><div class="phone"></div><div>Gire o aparelho para jogar<br><small>The Black Plague é um jogo de paisagem.</small></div></div>
+
+		<div id="status">
+			<h1>THE BLACK PLAGUE<small>Rafaelle's Oath</small></h1>
+			<div id="status-bar"><div id="status-fill"></div></div>
+			<div id="status-text">Carregando…</div>
+			<div id="status-notice"></div>
+		</div>
+
+		<script>
+// Áudio no iPhone/Safari: (1) o som da web respeita o botão lateral de silêncio, a menos que a página peça a
+// categoria "playback"; (2) o AudioContext só sai de "suspenso" a partir de um toque, e o Safari só aceita
+// toques que terminam (touchend/pointerup/click), não os que começam. Guarda os contextos criados pelo motor e
+// os retoma em todo toque, tocando um instante de silêncio (o "desbloqueio" clássico).
+(function () {
+	try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch (e) { /* iOS < 16.4 */ }
+	const Native = window.AudioContext || window.webkitAudioContext;
+	if (!Native) { return; }
+	const contexts = [];
+	const Wrapped = function (...args) {
+		const ctx = new Native(...args);
+		contexts.push(ctx);
+		return ctx;
+	};
+	Wrapped.prototype = Native.prototype;
+	window.AudioContext = Wrapped;
+	window.webkitAudioContext = Wrapped;
+
+	// iOS antigo (< 16.4): tocar um <audio> real, mudo e em laço, também troca a categoria de áudio da página.
+	let keepAlive = null;
+	function startKeepAlive() {
+		if (keepAlive) { return; }
+		keepAlive = new Audio('data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAESsAABErAAABAAgAZGF0YQAAAAA=');
+		keepAlive.loop = true;
+		keepAlive.setAttribute('playsinline', '');
+		keepAlive.play().catch(() => { keepAlive = null; });
+	}
+	function unlock() {
+		startKeepAlive();
+		for (const ctx of contexts) {
+			if (ctx.state !== 'running') { ctx.resume().catch(() => {}); }
+			try {
+				const src = ctx.createBufferSource();
+				src.buffer = ctx.createBuffer(1, 1, 22050);
+				src.connect(ctx.destination);
+				src.start(0);
+			} catch (e) { /* o contexto pode estar fechado */ }
+		}
+	}
+	for (const ev of ['touchend', 'pointerup', 'click', 'keydown']) {
+		document.addEventListener(ev, unlock, { capture: true, passive: true });
+	}
+	// Voltar do bloqueio de tela ou de outra aba: o iOS deixa o contexto "interrompido" e ele precisa ser retomado.
+	document.addEventListener('visibilitychange', () => { if (!document.hidden) { unlock(); } });
+})();
+		</script>
+		<script>
+			// O motor (.wasm) tem ~38 MB, acima do limite de 25 MiB por arquivo da Cloudflare: vai comprimido
+			// (tools/export_web.sh) e é descomprimido aqui, sem o motor do Godot perceber.
+			(function () {
+				const nativeFetch = window.fetch.bind(window);
+				window.fetch = function (input, init) {
+					const url = typeof input === 'string' ? input : input.url;
+					if (!url.split('?')[0].endsWith('.wasm')) {
+						return nativeFetch(input, init);
+					}
+					return nativeFetch(url + '.gz', init).then(function (r) {
+						if (!r.ok) {
+							return r;
+						}
+						return new Response(r.body.pipeThrough(new DecompressionStream('gzip')), {
+							status: 200,
+							headers: { 'Content-Type': 'application/wasm' },
+						});
+					});
+				};
+			})();
+		</script>
+		<script src="index.js"></script>
+		<script>
+const GODOT_CONFIG = {"args":[],"canvasResizePolicy":2,"emscriptenPoolSize":8,"ensureCrossOriginIsolationHeaders":false,"executable":"index","experimentalVK":false,"fileSizes":{"index.pck":13404656,"index.wasm":39514754},"focusCanvas":true,"gdextensionLibs":[],"godotPoolSize":4,"serviceWorker":"index.service.worker.js"};
+const GODOT_THREADS_ENABLED = false;
+const engine = new Engine(GODOT_CONFIG);
+
+// Sem zoom por pinça da página (iOS) nem menu de contexto: o jogo trata os gestos.
+document.addEventListener('gesturestart', (e) => e.preventDefault());
+document.addEventListener('contextmenu', (e) => e.preventDefault());
+
+(function () {
+	const statusOverlay = document.getElementById('status');
+	const statusFill = document.getElementById('status-fill');
+	const statusText = document.getElementById('status-text');
+	const statusNotice = document.getElementById('status-notice');
+	const totalMB = Object.values(GODOT_CONFIG.fileSizes || {}).reduce((a, b) => a + b, 0) / 1048576;
+
+	let initializing = true;
+	let statusMode = '';
+
+	function setStatusMode(mode) {
+		if (statusMode === mode || !initializing) {
+			return;
+		}
+		if (mode === 'hidden') {
+			statusOverlay.remove();
+			initializing = false;
+			return;
+		}
+		statusOverlay.style.visibility = 'visible';
+		statusNotice.style.display = mode === 'notice' ? 'block' : 'none';
+		statusMode = mode;
+	}
+
+	function setStatusNotice(text) {
+		while (statusNotice.lastChild) {
+			statusNotice.removeChild(statusNotice.lastChild);
+		}
+		text.split('\n').forEach((line) => {
+			statusNotice.appendChild(document.createTextNode(line));
+			statusNotice.appendChild(document.createElement('br'));
+		});
+	}
+
+	function displayFailureNotice(err) {
+		console.error(err);
+		setStatusNotice(err instanceof Error ? err.message : (typeof err === 'string' ? err : 'Ocorreu um erro desconhecido.'));
+		setStatusMode('notice');
+		initializing = false;
+	}
+
+	const missing = Engine.getMissingFeatures({ threads: GODOT_THREADS_ENABLED });
+	if (missing.length !== 0) {
+		displayFailureNotice('Erro\nEste navegador não tem recursos necessários para rodar o jogo:\n' + missing.join('\n'));
+	} else {
+		setStatusMode('progress');
+		statusText.textContent = 'Carregando… (' + totalMB.toFixed(0) + ' MB; no próximo acesso o navegador reaproveita)';
+		engine.startGame({
+			'onProgress': function (current, total) {
+				if (current > 0 && total > 0) {
+					const pct = Math.floor(100 * current / total);
+					statusFill.style.width = pct + '%';
+					statusText.textContent = 'Carregando… ' + pct + '%  (' + (current / 1048576).toFixed(0) + ' de ' + (total / 1048576).toFixed(0) + ' MB)';
+				}
+			},
+		}).then(() => {
+			setStatusMode('hidden');
+		}, displayFailureNotice);
+	}
+}());
+		</script>
+	</body>
+</html>
+
