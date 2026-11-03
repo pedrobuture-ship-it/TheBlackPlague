@@ -132,14 +132,21 @@ body {
 		<script>
 			// O motor (.wasm) tem ~38 MB, acima do limite de 25 MiB por arquivo da Cloudflare: vai comprimido
 			// (tools/export_web.sh) e é descomprimido aqui, sem o motor do Godot perceber.
+			// O pacote (.pck) e o motor são sempre conferidos com o servidor ('no-cache': baixa de novo só se mudou).
+			// Sem isso, logo depois de uma publicação o navegador ainda pode entregar a cópia antiga (o GitHub Pages
+			// manda guardar por 10 min), e o service worker a guardaria como se fosse a versão nova.
 			(function () {
 				const nativeFetch = window.fetch.bind(window);
 				window.fetch = function (input, init) {
 					const url = typeof input === 'string' ? input : input.url;
-					if (!url.split('?')[0].endsWith('.wasm')) {
+					const path = url.split('?')[0];
+					if (path.endsWith('.pck')) {
+						return nativeFetch(input, Object.assign({}, init, { cache: 'no-cache' }));
+					}
+					if (!path.endsWith('.wasm')) {
 						return nativeFetch(input, init);
 					}
-					return nativeFetch(url + '.gz', init).then(function (r) {
+					return nativeFetch(url + '.gz', Object.assign({}, init, { cache: 'no-cache' })).then(function (r) {
 						if (!r.ok) {
 							return r;
 						}
@@ -153,7 +160,7 @@ body {
 		</script>
 		<script src="index.js"></script>
 		<script>
-const GODOT_CONFIG = {"args":[],"canvasResizePolicy":2,"emscriptenPoolSize":8,"ensureCrossOriginIsolationHeaders":false,"executable":"index","experimentalVK":false,"fileSizes":{"index.pck":13440672,"index.wasm":39514754},"focusCanvas":true,"gdextensionLibs":[],"godotPoolSize":4,"serviceWorker":"index.service.worker.js"};
+const GODOT_CONFIG = {"args":[],"canvasResizePolicy":2,"emscriptenPoolSize":8,"ensureCrossOriginIsolationHeaders":false,"executable":"index","experimentalVK":false,"fileSizes":{"index.pck":13441680,"index.wasm":39514754},"focusCanvas":true,"gdextensionLibs":[],"godotPoolSize":4,"serviceWorker":"index.service.worker.js"};
 const GODOT_THREADS_ENABLED = false;
 const engine = new Engine(GODOT_CONFIG);
 
