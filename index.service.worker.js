@@ -4,7 +4,7 @@
 // Incrementing CACHE_VERSION will kick off the install event and force
 // previously cached resources to be updated from the network.
 /** @type {string} */
-const CACHE_VERSION = '1793762576|2573310';
+const CACHE_VERSION = '1793766517|2655169';
 /** @type {string} */
 const CACHE_PREFIX = 'The Black Plague-sw-cache-';
 const CACHE_NAME = CACHE_PREFIX + CACHE_VERSION;
