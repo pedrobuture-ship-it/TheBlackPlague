@@ -12,6 +12,7 @@
 		<style>
 html, body, #canvas { margin: 0; padding: 0; border: 0; }
 html, body { height: 100%; background: #0d0916; }
+@supports (height: 100dvh) { html, body { height: 100dvh; } }  /* altura que acompanha a barra do navegador do celular */
 body {
 	color: #e8e0d0;
 	overflow: hidden;
@@ -24,7 +25,10 @@ body {
 	-webkit-tap-highlight-color: transparent;
 	font-family: Georgia, 'Times New Roman', serif;
 }
-#canvas { display: block; }
+/* O canvas cobre sempre a janela inteira. O motor escreve a largura e a altura em pixels no estilo do canvas, mas no
+   celular (girar o aparelho, a barra do navegador que some e volta) a altura medida por ele às vezes chega atrasada e
+   deixa uma faixa escura embaixo: o !important vence o estilo do motor, e o tamanho do desenho se acerta no resize. */
+#canvas { display: block; position: fixed; left: 0; top: 0; width: 100% !important; height: 100% !important; }
 #canvas:focus { outline: none; }
 
 /* margens do entalhe e da barra de gestos: o jogo as lê para afastar a interface (Device.safe_insets) */
@@ -72,6 +76,21 @@ body {
 		<canvas id="canvas">Seu navegador não suporta o elemento canvas.</canvas>
 		<div id="safe-probe"></div>
 		<noscript>Seu navegador precisa do JavaScript ligado para rodar o jogo.</noscript>
+		<script>
+// Girar o aparelho ou mostrar/esconder a barra do navegador muda a altura da janela, e no celular o aviso chega
+// atrasado ou nem chega: depois de cada mudança pedimos ao motor para reler o tamanho (evento resize), algumas vezes.
+(function () {
+	let timers = [];
+	function nudge() { window.dispatchEvent(new Event('resize')); }
+	function settle() {
+		timers.forEach(clearTimeout);
+		timers = [80, 300, 800, 1600].map((ms) => setTimeout(nudge, ms));
+	}
+	window.addEventListener('orientationchange', settle);
+	if (window.visualViewport) { window.visualViewport.addEventListener('resize', settle); }
+	document.addEventListener('fullscreenchange', settle);
+})();
+		</script>
 
 		<div id="rotate"><div class="phone"></div><div>Gire o aparelho para jogar<br><small>The Black Plague é um jogo de paisagem.</small></div></div>
 
@@ -160,7 +179,7 @@ body {
 		</script>
 		<script src="index.js"></script>
 		<script>
-const GODOT_CONFIG = {"args":[],"canvasResizePolicy":2,"emscriptenPoolSize":8,"ensureCrossOriginIsolationHeaders":false,"executable":"index","experimentalVK":false,"fileSizes":{"index.pck":15870644,"index.wasm":39514754},"focusCanvas":true,"gdextensionLibs":[],"godotPoolSize":4,"serviceWorker":"index.service.worker.js"};
+const GODOT_CONFIG = {"args":[],"canvasResizePolicy":2,"emscriptenPoolSize":8,"ensureCrossOriginIsolationHeaders":false,"executable":"index","experimentalVK":false,"fileSizes":{"index.pck":15873188,"index.wasm":39514754},"focusCanvas":true,"gdextensionLibs":[],"godotPoolSize":4,"serviceWorker":"index.service.worker.js"};
 const GODOT_THREADS_ENABLED = false;
 const engine = new Engine(GODOT_CONFIG);
 
